@@ -8,20 +8,24 @@ selected = bpy.context.selected_objects
 
 data = []
 
+margin = 0.5
+
 for i in selected:
-    image = bpy.data.objects[i.name].data
+    object = bpy.data.objects[i.name]
+    image = object.data
+    size = object.empty_display_size
     x = image.size[0]
     y = image.size[1]
     print(image.size[0],'x',image.size[1])
     if (x > y):
-        y = (y*5)/x
-        x = 5
+        y = (y*size)/x + margin
+        x = size + margin
     elif (x < y):
-        x = (x*5)/y
-        y = 5
+        x = (x*size)/y + margin
+        y = size + margin
     else:
-        x = 5
-        y = 5
+        x = size + margin
+        y = size + margin
     data.append(
         {'object': i.name,
         'x':x,
@@ -89,3 +93,9 @@ boxes = packer(test)
 
 print(json.dumps(boxes,indent=2))
     
+for obj in boxes:
+    image = bpy.data.objects[obj['object']]
+    image.location[0] = obj['x'] + obj['w']/2
+    image.location[2] = -obj['y'] - obj['h']/2
+    image.empty_image_offset[0] = -0.5
+    image.empty_image_offset[1] = -0.5
