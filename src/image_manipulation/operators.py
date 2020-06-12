@@ -6,6 +6,35 @@ from bpy_extras.io_utils import ImportHelper
 from bpy.props import StringProperty, BoolProperty, EnumProperty, CollectionProperty
 from bpy.types import Operator, OperatorFileListElement
 
+# class WM_OT_add_images(bpy.types.Operator):
+#     """Open the Add Cube Dialog box"""
+#     bl_label = "Add Cube Dialog Box"
+#     bl_idname = "ref.add_images"
+   
+#     colname = bpy.props.StringProperty(name= "Enter Name", default= "")
+#     dropdown_box: EnumProperty(
+#         items=(
+#             ("A", "Ahh", "Tooltip for A"),
+#             ("B", "Be", "Tooltip for B"),
+#             ("C", "Ce", "Tooltip for C"),
+#         ),
+#         name="Description for the Elements",
+#         default="A",
+#         description="Tooltip for the Dropdownbox",
+#     )
+#     def execute(self, context):     
+#         return {'FINISHED'}
+   
+#     def invoke(self, context, event):
+#         return context.window_manager.invoke_props_dialog(self)
+    
+#     def draw(self, context):
+#         layout = self.layout
+#         props = context.scene.BlendRefProps
+#         layout.prop(props, "nameboard")
+#         layout.operator('ref.add_images_outside', text='Add Images', icon='FILEBROWSER'),
+
+
 class BlendRef_OT_add_images(bpy.types.Operator, ImportHelper):
     bl_idname = 'ref.add_images'
     bl_label = "Add a new Reference Panel"
@@ -21,46 +50,87 @@ class BlendRef_OT_add_images(bpy.types.Operator, ImportHelper):
     filename_ext = ""
 
     def execute(self,context):
+        boardName = context.scene.BlendRefProps.nameboard
+        if context.scene.BlendRefProps.canvasChoices != 'Create New Canvas':
+            boardName = context.scene.BlendRefProps.refGroups
+        if not boardName:
+            boardName = "Canvas"
         colName = 'BlendRef'
         if (colName not in bpy.data.collections.keys()):
             collection = bpy.data.collections.new(colName)
             bpy.context.scene.collection.children.link(collection)
             bpy.data.collections[colName].hide_render = True
+        if (boardName not in bpy.data.collections.keys()):
+            collection = bpy.data.collections.new(boardName)
+            bpy.data.collections[colName].children.link(collection)
+            bpy.data.collections[boardName].hide_render = True
         import os
         directory = self.directory
         for file_elem in self.files:
             filepath = os.path.join(directory, file_elem.name)
-            bpy.ops.object.load_reference_image(filepath = filepath)
+            scene = context.scene
+            cursor = scene.cursor.location
+
+            try:
+                image = bpy.data.images.load(filepath, check_existing=True)
+            except RuntimeError as ex:
+                self.report({'ERROR'}, str(ex))
+                return {'CANCELLED'}
+
+            bpy.ops.object.empty_add(
+                'INVOKE_REGION_WIN',
+                type='IMAGE',
+                location=cursor,
+                align=('VIEW'),
+            )
+
+            view_layer = context.view_layer
+            obj = view_layer.objects.active
+            obj.data = image
+            obj.name = image.name
+            obj.empty_display_size = 5.0
+            # Remove object from all collections not used in a scene
+            bpy.ops.collection.objects_remove_all()
+            # add it to our specific collection
+            bpy.data.collections[boardName].objects.link(obj)
             print(filepath)
 
-        return{'FINISHED'}
+        return {'FINISHED'}
 
 class BlendRef_OT_arrange_images(bpy.types.Operator):
     bl_idname = 'ref.arrange_images'
     bl_label = "Arrange images automatically"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    margin: bpy.props.FloatProperty(
+                name="Margin",
+                description="Margin between auto-arranged images",
+                min=0,
+                max=10,
+            )
 
     def execute(self,context):
         selected = bpy.context.selected_objects
 
         data = []
 
-        margin = 0.5
         for i in selected:
             object = bpy.data.objects[i.name]
             image = object.data
             size = object.empty_display_size
+            scale_x = object.scale[0]
+            scale_y = object.scale[1]
             x = image.size[0]
             y = image.size[1]
-            print(image.size[0],'x',image.size[1])
             if (x > y):
-                y = (y*size)/x + margin
-                x = size + margin
+                y = ((y*size)/x)*scale_y + self.margin
+                x = (size)*scale_x + self.margin
             elif (x < y):
-                x = (x*size)/y + margin
-                y = size + margin
+                x = ((x*size)/y)*scale_x + self.margin
+                y = (size)*scale_y + self.margin
             else:
-                x = size + margin
-                y = size + margin
+                x = size*scale_x + self.margin
+                y = size*scale_y + self.margin
             data.append(
                 {'object': i.name,
                 'x':x,
